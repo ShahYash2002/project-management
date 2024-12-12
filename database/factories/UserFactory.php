@@ -2,12 +2,14 @@
 
 namespace Database\Factories;
 
+use App\Models\Department;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Laravel\Jetstream\Features;
+use Spatie\Permission\Models\Role;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
@@ -27,7 +29,7 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
+            'name' => fake()->firstName() . " " . fake()->lastName(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
@@ -44,9 +46,37 @@ class UserFactory extends Factory
      */
     public function unverified(): static
     {
-        return $this->state(fn (array $attributes) => [
+        return $this->state(fn(array $attributes) => [
             'email_verified_at' => null,
         ]);
+    }
+
+    public function admin(): static
+    {
+        return $this
+            ->state(fn(array $attributes) => [
+                "name" => "System Admin",
+                "email" => "admin@gmail.com",
+                "password" => Hash::make('admin')
+            ])
+            ->afterCreating(function (User $user) {
+                $roleName = config("seeder.roles")["admin"];
+                $role = Role::findOrCreate($roleName);
+                $user->assignRole($role);
+            });
+    }
+
+    public function coordinator(): static
+    {
+        return $this
+            ->state(fn($user) => [
+                'department_id' => fake()->randomElement(Department::pluck("id")),
+            ])
+            ->afterCreating(function (User $user) {
+                $roleName = config("seeder.roles")["project_coordinator"];
+                $role = Role::findOrCreate($roleName);
+                $user->assignRole($role);
+            });
     }
 
     /**
@@ -54,14 +84,14 @@ class UserFactory extends Factory
      */
     public function withPersonalTeam(?callable $callback = null): static
     {
-        if (! Features::hasTeamFeatures()) {
+        if (!Features::hasTeamFeatures()) {
             return $this->state([]);
         }
 
         return $this->has(
             Team::factory()
-                ->state(fn (array $attributes, User $user) => [
-                    'name' => $user->name.'\'s Team',
+                ->state(fn(array $attributes, User $user) => [
+                    'name' => $user->name . '\'s Team',
                     'user_id' => $user->id,
                     'personal_team' => true,
                 ])
